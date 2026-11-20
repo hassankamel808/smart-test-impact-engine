@@ -221,3 +221,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docker
+.env
+.env.*
+docker-compose.override.yml
+docker-compose.override.yaml
+*.dockerfile.local
+
+# Docker development artifacts
+docker-data/
+volumes/
+
+# IDEs
+.idea/
+.vscode/
+*.suo
+*.sln.iml
