@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Usage: compare_runs.py OUT.md run_dir1 run_dir2 [...] [--expected FILE]
-Validates inventory, provenance (commit SHA, image ID, schema, config) and outcomes.
-Exit 0 only if every validation passes."""
-import argparse, json
+Validates inventory, provenance, pytest exit codes (from meta.json), duration values
+and outcomes. Exit 0 only if every validation passes."""
+import argparse, json, math
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
+
+
+def ts(s):
+    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ")
 
 
 def main():
@@ -22,6 +27,7 @@ def main():
              for d in a.run_dirs]
     problems = []
 
+    # 1. Inventory
     L = ["# Repeated-run comparison", "", f"Runs: {', '.join(names)}",
          f"Inventory: {len(expected)} IDs ({a.expected})", "", "## 1. Inventory", "",
          "| Run | records | unique IDs | duplicates | inventory IDs missing | not in inventory | outcome=missing |",
@@ -44,6 +50,7 @@ def main():
     if not same:
         problems.append("runs do not contain the same test IDs")
 
+    # 2. Provenance
     L += ["", "## 2. Provenance", "", "| Field | Distinct values across all records |", "|---|---|"]
     for f in ("commit_sha", "image_id", "schema_version"):
         vals = {r[f] for rs in recs for r in rs}
@@ -54,32 +61,74 @@ def main():
     L.append(f"| config | {len(cfgs)} distinct |")
     if len(cfgs) != 1:
         problems.append("config differs across records")
-    shas = {r["commit_sha"] for rs in recs for r in rs}
-    if any(len(s) != 40 for s in shas):
+    if any(len(r["commit_sha"]) != 40 for rs in recs for r in rs):
         problems.append("commit_sha is not 40 characters")
+    for n, rs, m in zip(names, recs, metas):
+        if m.get("commit_sha") and m["commit_sha"] != rs[0]["commit_sha"]:
+            problems.append(f"{n}: meta commit_sha differs from records")
+        if m.get("image_id") and m["image_id"] != rs[0]["image_id"]:
+            problems.append(f"{n}: meta image_id differs from records")
 
-    L += ["", "## 3. Run metadata", "", "| Run | pytest exit | Docker server | platform | host |", "|---|---|---|---|---|"]
-    for n, m in zip(names, metas):
-        L.append(f"| {n} | {m.get('pytest_exit_code', 'n/a')} | {m.get('docker_server_version', 'n/a (baseline)')} "
-                 f"| {m.get('docker_server_platform', 'n/a (baseline)')} | {m.get('host_platform', 'n/a (baseline)')} |")
+    # 3. Pytest exit codes from metadata
+    L += ["", "## 3. Pytest exit codes (from meta.json)", "",
+          "| Run | pytest exit | failed+error records | Docker server | platform | host |", "|---|---|---|---|---|---|"]
+    for n, rs, m in zip(names, recs, metas):
+        code = m.get("pytest_exit_code")
+        bad = sum(1 for r in rs if r["outcome"] in ("failed", "error"))
+        L.append(f"| {n} | {code if code is not None else 'MISSING'} | {bad} | "
+                 f"{m.get('docker_server_version', 'n/a (baseline)')} | "
+                 f"{m.get('docker_server_platform', 'n/a (baseline)')} | {m.get('host_platform', 'n/a (baseline)')} |")
+        if isinstance(code, bool) or not isinstance(code, int):
+            problems.append(f"{n}: meta.json has no integer pytest_exit_code")
+            continue
+        if code != 0:
+            problems.append(f"{n}: pytest exit code is {code}, not 0")
+        if code == 0 and bad:
+            problems.append(f"{n}: exit code 0 but {bad} failed/error records")
+        if code == 1 and not bad:
+            problems.append(f"{n}: exit code 1 (tests failed) but no failed/error records")
 
+    # 4. Duration validation
+    L += ["", "## 4. Duration validation", "",
+          "| Run | valid durations | invalid | sum of test time s | suite time s | max s |", "|---|---|---|---|---|---|"]
+    for n, rs in zip(names, recs):
+        invalid, valid = [], []
+        for r in rs:
+            d = r["duration_s"]
+            if r["outcome"] == "missing":
+                if d is not None:
+                    invalid.append(r["test_id"])
+            elif isinstance(d, bool) or not isinstance(d, (int, float)) or not math.isfinite(d) or d < 0:
+                invalid.append(r["test_id"])
+            else:
+                valid.append(d)
+        suite = (ts(rs[0]["finished_at"]) - ts(rs[0]["started_at"])).total_seconds()
+        total = sum(valid)
+        L.append(f"| {n} | {len(valid)} | {len(invalid)} | {total:.2f} | {suite:.0f} | {max(valid, default=0):.3f} |")
+        if invalid:
+            problems.append(f"{n}: {len(invalid)} records have an invalid duration (e.g. {invalid[0]})")
+        if total > suite + 2:
+            problems.append(f"{n}: sum of test durations ({total:.1f}s) exceeds suite time ({suite:.0f}s)")
+    L.append("\nRules: a non-missing record needs a finite number >= 0; missing needs null; "
+             "summed test time must not exceed the suite time (serial run, 2 s tolerance).")
+
+    # 5. Outcome differences
     by = [{r["test_id"]: r["outcome"] for r in rs} for rs in recs]
     diff = [t for t in sorted(exp_set) if len({b.get(t, "missing") for b in by}) > 1]
-    L += ["", "## 4. Outcome differences", "", f"Tests with differing outcome: {len(diff)}", ""]
+    L += ["", "## 5. Outcome differences", "", f"Tests with differing outcome: {len(diff)}", ""]
     if diff:
         L += ["| Test | " + " | ".join(names) + " |", "|---|" + "---|" * len(names)]
         L += [f"| `{t}` | " + " | ".join(b.get(t, "missing") for b in by) + " |" for t in diff]
 
+    dur = [{r["test_id"]: r["duration_s"] for r in rs} for rs in recs]
     spread = []
     for t in sorted(exp_set):
-        ds = [r["duration_s"] for rs in recs for r in rs if r["test_id"] == t and r["duration_s"] is not None] if False else []
-    dur = [{r["test_id"]: r["duration_s"] for r in rs} for rs in recs]
-    for t in sorted(exp_set):
-        ds = [d[t] for d in dur if d.get(t) is not None]
+        ds = [d[t] for d in dur if isinstance(d.get(t), (int, float)) and not isinstance(d.get(t), bool)]
         if len(ds) > 1 and min(ds) > 0:
             spread.append((max(ds) / min(ds), t, min(ds), max(ds)))
     spread.sort(reverse=True)
-    L += ["", "## 5. Duration spread (informational, top 10)", "", "| Test | min s | max s | ratio |", "|---|---|---|---|"]
+    L += ["", "## 6. Duration spread (informational, top 10)", "",
+          "| Test | min s | max s | ratio |", "|---|---|---|---|"]
     L += [f"| `{t}` | {lo:.3f} | {hi:.3f} | {ra:.1f} |" for ra, t, lo, hi in spread[:10]]
 
     L += ["", "## Validation", "", "**PASS**" if not problems else "**FAIL**"]

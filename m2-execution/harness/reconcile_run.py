@@ -4,7 +4,7 @@ Usage: reconcile_run.py EXPECTED.txt OUT.md run_dir [run_dir ...]
 Never modifies run folders. Writes OUT.md and OUT.json.
 Exit 0 if every run's records are exactly the inventory; 1 if not;
 2 if records are fine but some unmatched JUnit cases could not be explained."""
-import json, sys
+import json, re, sys
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -22,6 +22,14 @@ def parent_of(cls, name, by_cls):
                 best = (exp_name, nodeid)
     return best[1] if best else None
 
+def subtests_from_log(d):
+    """Parse 'N subtests passed' from the last non-empty line of pytest_stdout.log, if stored."""
+    log = Path(d) / "pytest_stdout.log"
+    if not log.exists():
+        return None
+    lines = [l for l in log.read_text(errors="replace").splitlines() if l.strip()]
+    found = re.findall(r"(\d+) subtests? (passed|failed|skipped)", lines[-1]) if lines else []
+    return {status: int(n) for n, status in found}
 
 def reconcile(run_dir, expected, key_to_id, by_cls):
     d = Path(run_dir)
@@ -54,6 +62,11 @@ def reconcile(run_dir, expected, key_to_id, by_cls):
         "run": d.name,
         "junit_testcase_elements": len(cases),
         "junit_suite_tests_attribute": suite.get("tests"),
+        "subtests_derived_from_suite_attribute":
+            (int(suite.get("tests")) - len(cases)) if (suite.get("tests") or "").isdigit() else None,
+        "subtests_reported_by_pytest": subtests_from_log(d),
+        "subtests_note": "Subtests are counted in the suite 'tests' attribute only. "
+                         "They have no <testcase> element and are not extra pytest node IDs.",
         "mapped_elements": sum(seen.values()),
         "mapped_unique_ids": len(seen),
         "duplicate_ids_in_junit": sorted(i for i, k in seen.items() if k > 1),
@@ -94,6 +107,11 @@ def main():
     rows = [
         ("JUnit testcase elements", lambda r: r["junit_testcase_elements"]),
         ("JUnit suite `tests` attribute", lambda r: r["junit_suite_tests_attribute"]),
+        ("Subtests derived (suite tests attribute minus testcase elements)",
+         lambda r: r["subtests_derived_from_suite_attribute"]),
+        ("Subtests reported in pytest_stdout.log",
+         lambda r: json.dumps(r["subtests_reported_by_pytest"]) if r["subtests_reported_by_pytest"] is not None
+         else "n/a (log not stored)"),
         ("Mapped elements", lambda r: r["mapped_elements"]),
         ("Mapped unique inventory IDs", lambda r: r["mapped_unique_ids"]),
         ("Duplicate IDs in JUnit", lambda r: len(r["duplicate_ids_in_junit"])),
@@ -117,6 +135,8 @@ def main():
     for label, fn in rows:
         L.append(f"| {label} | " + " | ".join(str(fn(r)) for r in results) + " |")
     L += ["", f"All runs have the same record ID set: **{same_ids}**", ""]
+    L += ["Subtests are recorded here as counts only. They are not additional pytest node IDs, "
+          "and the attempt records stay at one record per test function.", ""]
     for r in results:
         L.append(f"## Samples of unmatched JUnit cases: {r['run']} ({r['unmatched_total']} total)")
         L += [f"- `{s}`" for s in r["unmatched_samples"]] or ["- none"]
