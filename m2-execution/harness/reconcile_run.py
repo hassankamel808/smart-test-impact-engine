@@ -147,6 +147,7 @@ def main():
     clean = same_ids and all(
         r["records"] == n and r["record_unique_ids"] == n and not r["record_duplicate_ids"]
         and not r["inventory_ids_without_record"] and not r["records_not_in_inventory"]
+        and not r["inventory_ids_not_in_junit"]
         for r in results)
     print("\n".join(L[:4 + len(rows) + 2]))
     print(f"\nrecords exactly match inventory in every run: {clean}  -> {out}")

@@ -56,6 +56,11 @@ Mitigations in place: one folder per run, no other host mount, output treated as
 - The container shares the VM's kernel; no custom seccomp profile was applied.
 - The hostile test is a probe that reports what is allowed, not an exploit attempt.
 - Only team-owned code is run. This model does not make arbitrary public pull requests safe.
-
+- `artifacts/run-001..006` were executed without the restriction set (same image ID, same
+  commands otherwise). Only `restricted-01` and, from `run-007` on, the default harness run
+  under `security/run_restricted.sh`. The restricted and unrestricted runs gave identical outcomes.
+- The runner checks the image ID against `docker/IMAGE_DIGEST.txt`, never pulls (`--pull=never`),
+  and accepts only `runs/<name>` as output dir (no traversal, no symlinks). `/out` stays a
+  writable per-run mount (residual risk above).
 ## Review
 Reviewers: Member 1 and the leader. Open items go to `decisions/technology-log.md`.

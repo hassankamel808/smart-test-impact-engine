@@ -1,0 +1,19 @@
+{
+ "meta_version": 3,
+ "run_id": "v3-2",
+ "commit_sha": "0aa7ce6926f097d06e348edf89937d3f770b37f1",
+ "image_tag": "black-ref:0aa7ce6",
+ "image_id": "sha256:97ad1d4c33ba11fc921bb6f0e5b6b1144459cbd07c31adf41ff5f1d6563274ef",
+ "expected_image_id": "sha256:97ad1d4c33ba11fc921bb6f0e5b6b1144459cbd07c31adf41ff5f1d6563274ef",
+ "started_at": "2026-11-21T20:30:55Z",
+ "finished_at": "2026-11-21T20:32:16Z",
+ "pytest_exit_code": 0,
+ "pytest_command": "pytest -p no:cacheprovider --junitxml=/out/junit.xml -q",
+ "execution_mode": "restricted",
+ "runner": "security/run_restricted.sh",
+ "restrictions": "uid 10001, cap-drop ALL, no-new-privileges, network none, memory 2g, cpus 2, pids 512, read-only root, tmpfs /tmp 256m, pull never",
+ "docker_client_version": "29.9.3",
+ "docker_server_version": "29.9.3",
+ "docker_server_platform": "Docker Desktop linux/x86_64",
+ "host_platform": "MINGW64_NT-10.0-26200 3.6.5-22c95533.x86_64 x86_64 | OS=Windows_NT"
+}
