@@ -2,13 +2,15 @@
 # Usage: harness/run_suite.sh <run_id>
 # Runs the suite through security/run_restricted.sh.
 # Exit code = pytest's exit code, after the metadata is saved.
-# Pre-flight failure codes (outside pytest's 1-5): 71 no digest file, 72 image mismatch,
-# 73 run folder exists, 74 invalid run_id.
+# Pre-flight failure codes (outside pytest's 1-5): # 71 no digest file, 72 image mismatch, 73 run folder exists, 74 invalid run_id, 75 runs/ is a symlink.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 RUN_ID="${1:?usage: run_suite.sh <run_id>}"
 if ! [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$RUN_ID" == *..* ]]; then
   echo "run_id must use only letters, digits, '.', '_' or '-' and start with a letter or digit" >&2; exit 74
+fi
+if [ -L runs ]; then
+  echo "runs/ must not be a symlink" >&2; exit 75
 fi
 IMAGE_TAG="black-ref:0aa7ce6"
 COMMIT_SHA="0aa7ce6926f097d06e348edf89937d3f770b37f1"
@@ -21,11 +23,12 @@ if [ "$ACTUAL_ID" != "$EXPECTED_ID" ]; then
   echo "IMAGE MISMATCH: expected '$EXPECTED_ID' but $IMAGE_TAG is '$ACTUAL_ID'. Not running." >&2
   exit 72
 fi
-if [ -e "$OUT" ]; then
+if [ -e "$OUT" ] || [ -L "$OUT" ]; then
   echo "Run folder $OUT already exists. Refusing to overwrite; use a new run id." >&2
   exit 73
 fi
-mkdir -p "$OUT"
+mkdir -p runs
+mkdir "$OUT" || { echo "cannot create $OUT" >&2; exit 73; }
 
 DOCKER_CLIENT=$(docker version --format '{{.Client.Version}}' 2>/dev/null || echo unknown)
 DOCKER_SERVER=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown)

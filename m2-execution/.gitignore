@@ -1,3 +1,7 @@
 upstream/
 runs/
 *.zip
+*.tar
+*.tar.gz
+negtest.*/
+docker/IMAGE_DIGEST.new

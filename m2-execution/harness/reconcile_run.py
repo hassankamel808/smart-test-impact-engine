@@ -144,17 +144,38 @@ def main():
     Path(out).write_text("\n".join(L) + "\n")
     Path(out).with_suffix(".json").write_text(json.dumps(results, indent=1))
 
-    clean = same_ids and all(
-        r["records"] == n and r["record_unique_ids"] == n and not r["record_duplicate_ids"]
-        and not r["inventory_ids_without_record"] and not r["records_not_in_inventory"]
-        and not r["inventory_ids_not_in_junit"]
-        for r in results)
+    def problems(r):
+        p = []
+        if r["records"] != n or r["record_unique_ids"] != n:
+            p.append("record count differs from inventory")
+        if r["record_duplicate_ids"]:
+            p.append("duplicate record IDs")
+        if r["inventory_ids_without_record"]:
+            p.append("inventory IDs without a record")
+        if r["records_not_in_inventory"]:
+            p.append("records not in inventory")
+        if r["inventory_ids_not_in_junit"]:
+            p.append("inventory IDs with no JUnit case")
+        if r["duplicate_ids_in_junit"]:
+            p.append("duplicate JUnit test IDs")
+        if r["unmatched_total"]:
+            p.append("unmatched JUnit cases")
+        return p
+
+    failed = {r["run"]: problems(r) for r in results if problems(r)}
+    clean = same_ids and not failed
     print("\n".join(L[:4 + len(rows) + 2]))
     print(f"\nrecords exactly match inventory in every run: {clean}  -> {out}")
+    verdict = ["", "## Verdict", "", "**CLEAN**" if clean else "**NOT CLEAN**"]
+    if not same_ids:
+        verdict.append("- runs do not have the same record ID set")
+    for run, ps in failed.items():
+        verdict += [f"- {run}: {p}" for p in ps]
+    Path(out).write_text("\n".join(L + verdict) + "\n")
+    for line in verdict[4:]:
+        print(line)
     if not clean:
         sys.exit(1)
-    if any(r["unmatched_unclassified"] for r in results):
-        sys.exit(2)
 
 
 main()
