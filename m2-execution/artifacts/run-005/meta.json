@@ -1,0 +1,16 @@
+{
+ "meta_version": 2,
+ "run_id": "v2-2",
+ "commit_sha": "0aa7ce6926f097d06e348edf89937d3f770b37f1",
+ "image_tag": "black-ref:0aa7ce6",
+ "image_id": "sha256:97ad1d4c33ba11fc921bb6f0e5b6b1144459cbd07c31adf41ff5f1d6563274ef",
+ "expected_image_id": "sha256:97ad1d4c33ba11fc921bb6f0e5b6b1144459cbd07c31adf41ff5f1d6563274ef",
+ "started_at": "2026-11-21T07:45:51Z",
+ "finished_at": "2026-11-21T07:47:17Z",
+ "pytest_exit_code": 0,
+ "pytest_command": "pytest -p no:cacheprovider --junitxml=/out/junit.xml -q",
+ "docker_client_version": "29.9.3",
+ "docker_server_version": "29.9.3",
+ "docker_server_platform": "Docker Desktop linux/x86_64",
+ "host_platform": "MINGW64_NT-10.0-26200 3.6.5-22c95533.x86_64 x86_64 | OS=Windows_NT"
+}
